@@ -1,46 +1,44 @@
 name: Deploy to K3s
 
 on:
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-```
-steps:
-  - name: Deploy to EC2
-    uses: appleboy/ssh-action@v1.0.3
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
 
-    with:
-      host: ${{ secrets.EC2_HOST }}
-      username: ${{ secrets.EC2_USER }}
-      key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
 
-      script: |
-        set -e
+            echo "Go to project"
+            cd ~/nginx-devops-project
 
-        echo "Go to project"
-        cd ~/nginx-devops-project
+            echo "Pull latest code"
+            git pull origin main
 
-        echo "Pull latest code"
-        git pull origin main
+            echo "Build Docker image"
+            docker build -t nginx-devops:latest docker/
 
-        echo "Build Docker image"
-        docker build -t nginx-devops:latest docker/
+            echo "Save image"
+            docker save nginx-devops:latest -o nginx-devops.tar
 
-        echo "Save image"
-        docker save nginx-devops:latest -o nginx-devops.tar
+            echo "Import into K3s"
+            sudo k3s ctr images import nginx-devops.tar
 
-        echo "Import into K3s"
-        sudo k3s ctr images import nginx-devops.tar
+            echo "Restart deployment"
+            kubectl rollout restart deployment/nginx-deployment
 
-        echo "Restart deployment"
-        kubectl rollout restart deployment/nginx-deployment
+            echo "Wait for rollout"
+            kubectl rollout status deployment/nginx-deployment --timeout=300s
 
-        echo "Wait for rollout"
-        kubectl rollout status deployment/nginx-deployment --timeout=300s
-
-        echo "Done"
+            echo "Done"
